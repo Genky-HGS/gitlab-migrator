@@ -30,7 +30,7 @@ const (
 )
 
 var loop, report bool
-var deleteExistingRepos, enablePullRequests, renameMasterToMain, skipInvalidMergeRequests, trimGithubBranches bool
+var deleteExistingRepos, enablePullRequests, enableIssues, renameMasterToMain, skipInvalidMergeRequests, trimGithubBranches bool
 var githubDomain, githubRepo, githubToken, githubUser, gitlabDomain, gitlabProject, gitlabToken, projectsCsvPath, renameTrunkBranch string
 var mergeRequestsAge int
 
@@ -50,6 +50,7 @@ type Report struct {
 	GroupName          string
 	ProjectName        string
 	MergeRequestsCount int
+	IssuesCount        int
 }
 
 type GitHubError struct {
@@ -96,6 +97,7 @@ func main() {
 
 	flag.BoolVar(&deleteExistingRepos, "delete-existing-repos", false, "whether existing repositories should be deleted before migrating")
 	flag.BoolVar(&enablePullRequests, "migrate-pull-requests", false, "whether pull requests should be migrated")
+	flag.BoolVar(&enableIssues, "migrate-issues", false, "whether issues should be migrated")
 	flag.BoolVar(&renameMasterToMain, "rename-master-to-main", false, "rename master branch to main and update pull requests (incompatible with -rename-trunk-branch)")
 	flag.BoolVar(&skipInvalidMergeRequests, "skip-invalid-merge-requests", false, "when true, will log and skip invalid merge requests instead of raising an error")
 	flag.BoolVar(&trimGithubBranches, "trim-branches-on-github", false, "when true, will delete any branches on GitHub that are no longer present in GitLab")
@@ -369,13 +371,16 @@ func printReport(ctx context.Context, projects []Project) {
 	fmt.Println()
 
 	totalMergeRequests := 0
+	totalIssues := 0
 	for _, result := range results {
 		totalMergeRequests += result.MergeRequestsCount
+		totalIssues += result.IssuesCount
 		fmt.Printf("%#v\n", result)
 	}
 
 	fmt.Println()
 	fmt.Printf("Total merge requests: %d\n", totalMergeRequests)
+	fmt.Printf("Total issues: %d\n", totalIssues)
 	fmt.Println()
 }
 
@@ -431,10 +436,33 @@ func reportProject(_ context.Context, slugs []string) (*Report, error) {
 		opts.Page = resp.NextPage
 	}
 
+	var issues []*gitlab.Issue
+	issueOpts := &gitlab.ListProjectIssuesOptions{
+		OrderBy: pointer("created_at"),
+		Sort:    pointer("asc"),
+	}
+
+	logger.Debug("retrieving GitLab issues", "name", gitlabPath[1], "group", gitlabPath[0], "project_id", proj.ID)
+	for {
+		result, resp, err := gl.Issues.ListProjectIssues(proj.ID, issueOpts)
+		if err != nil {
+			return nil, fmt.Errorf("retrieving gitlab issues: %v", err)
+		}
+
+		issues = append(issues, result...)
+
+		if resp.NextPage == 0 {
+			break
+		}
+
+		issueOpts.Page = resp.NextPage
+	}
+
 	return &Report{
 		GroupName:          gitlabPath[0],
 		ProjectName:        gitlabPath[1],
 		MergeRequestsCount: len(mergeRequests),
+		IssuesCount:        len(issues),
 	}, nil
 }
 

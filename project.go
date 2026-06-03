@@ -269,6 +269,10 @@ func (p *project) migrate(ctx context.Context) error {
 		p.migrateMergeRequests(ctx)
 	}
 
+	if enableIssues {
+		p.migrateIssues(ctx)
+	}
+
 	return nil
 }
 
