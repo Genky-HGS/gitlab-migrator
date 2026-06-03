@@ -378,8 +378,8 @@ func (p *project) migrateMergeRequest(ctx context.Context, mergeRequest *gitlab.
 	}
 
 	if strings.EqualFold(mergeRequest.State, "opened") {
-		if _, err = p.repo.Branch(mergeRequest.SourceBranch); err != nil {
-			if errors.Is(err, git.ErrBranchNotFound) && skipInvalidMergeRequests {
+		if _, err = p.repo.Reference(plumbing.NewBranchReferenceName(mergeRequest.SourceBranch), false); err != nil {
+			if errors.Is(err, plumbing.ErrReferenceNotFound) && skipInvalidMergeRequests {
 				logger.Info("skipping invalid merge request as source branch does not exist", "name", p.gitlabPath[1], "group", p.gitlabPath[0], "project_id", p.project.ID, "merge_request_id", mergeRequest.IID, "source_branch", mergeRequest.SourceBranch)
 				return false, nil
 			} else {
